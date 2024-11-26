@@ -1,1 +1,5 @@
 .DS_Store
+
+# virtual envs
+mx-prompt-management
+.env
