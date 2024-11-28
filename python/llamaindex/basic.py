@@ -33,10 +33,41 @@ llm = OpenAI(model=MODEL_NAME)
 try:
     # Define the prompt and interact with the model using LlamaIndex
     prompt = "Write a haiku about recursion in programming."
+    
+    # Set up generation logging
+    generation_id = str(uuid4())
+    generation_config = GenerationConfig(
+        id=generation_id,
+        name="generation",
+        provider="openai",
+        model=MODEL_NAME,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    generation = trace.generation(generation_config)
+    
     response = llm.complete(prompt)  # Directly get the text response
-
-    # Ensure response is stringified for JSON serialization
     response_text = str(response)
+
+    # Log the generation result
+    generation.result({
+        "id": generation_id,
+        "object": "text_completion",
+        "created": int(time()),
+        "model": MODEL_NAME,
+        "choices": [
+            {
+                "index": 0,
+                "text": response_text,
+                "logprobs": None,
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        }
+    })
 
     # Log the response with Maxim
     trace.event(str(uuid4()), "LlamaIndex Response", {"response_text": response_text})

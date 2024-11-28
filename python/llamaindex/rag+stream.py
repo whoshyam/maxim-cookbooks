@@ -1,19 +1,21 @@
 import os
-from anthropic import Anthropic  # Import required constants
+from time import time
+from uuid import uuid4
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.core.node_parser import SimpleNodeParser
+from llama_index.llms.openai import OpenAI
 from maxim.maxim import Logger, LoggerConfig
 from maxim.logger.components.session import SessionConfig
 from maxim.logger.components.trace import TraceConfig
 from maxim.logger.components.generation import GenerationConfig
-from uuid import uuid4
-from time import time
 
 # Retrieve API keys from environment variables
 MAXIM_API_KEY = os.getenv("MAXIM_API_KEY")
 LOG_REPOSITORY_ID = os.getenv("LOG_REPOSITORY_ID")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Define the model name
-MODEL_NAME = "claude-3-5-sonnet-20241022"
+MODEL_NAME = "gpt-4o-mini"
 
 # Set up Maxim logger configuration
 logger_config = LoggerConfig(id=LOG_REPOSITORY_ID)
@@ -28,20 +30,26 @@ trace_id = str(uuid4())
 trace_config = TraceConfig(id=trace_id)
 trace = session.trace(trace_config)
 
-# Set up the Anthropic client
-client = Anthropic(api_key=ANTHROPIC_API_KEY)
+# Initialize components and RAG setup
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+llm = OpenAI(model=MODEL_NAME)
+documents = SimpleDirectoryReader("../maxim-cookbooks/").load_data()
+node_parser = SimpleNodeParser.from_defaults(chunk_size=512)
+nodes = node_parser.get_nodes_from_documents(documents=documents)
+vector_index = VectorStoreIndex(nodes)
+query_engine = vector_index.as_query_engine(similarity_top_k=2, streaming=True)
 
-# Define the user input
-user_input = "What was the capital of France in 1800s?"
+# Define the query
+query = "What is the total amount of collected comprehensive trailer videos?"
 generation_id = str(uuid4())
 
 # Initialize the generation
 generation_config = GenerationConfig(
     id=generation_id,
     name="generation",
-    provider="anthropic",
+    provider="openai",
     model=MODEL_NAME,
-    messages=[{"role": "user", "content": user_input}]
+    messages=[{"role": "user", "content": query}]
 )
 generation = trace.generation(generation_config)
 
@@ -49,20 +57,17 @@ generation = trace.generation(generation_config)
 response_chunks = []
 
 try:
-    print("Claude's Response (streaming):")
+    print("RAG Query Response (streaming):")
 
-    # Stream the response from Claude
-    with client.messages.stream(
-        max_tokens=1024,
-        messages=[{"role": "user", "content": user_input}],
-        model=MODEL_NAME,
-    ) as stream:
-        for text_chunk in stream.text_stream:
-            # Collect streamed chunks
-            response_chunks.append(text_chunk)
+    # Stream the response
+    response_stream = query_engine.query(query)
+    for chunk in response_stream.response_gen:
+        # Collect streamed chunks
+        chunk_text = str(chunk)
+        response_chunks.append(chunk_text)
 
-            # Print the streamed text chunk
-            print(text_chunk, end="", flush=True)
+        # Print the streamed text chunk
+        print(chunk_text, end="", flush=True)
 
     # Combine all chunks into the final response text
     final_response = "".join(response_chunks)
@@ -72,7 +77,7 @@ try:
         "id": generation_id,
         "object": "text_completion",
         "created": int(time()),
-        "model": generation_config.model,
+        "model": MODEL_NAME,
         "choices": [
             {
                 "index": 0,

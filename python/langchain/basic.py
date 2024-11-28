@@ -7,55 +7,84 @@ from maxim.logger.components.trace import TraceConfig
 
 # Retrieve API keys from environment variables
 MAXIM_API_KEY = os.getenv("MAXIM_API_KEY")
-LOG_REPOSITORY_ID = "cm34ngxje000589znzbrupw12" # ENTER YOUR OWN LOG REPOSITORY
+LOG_REPOSITORY_ID =  os.getenv("LOG_REPOSITORY_ID")# ENTER YOUR OWN LOG REPOSITORY
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-
-if not MAXIM_API_KEY or not LOG_REPOSITORY_ID or not ANTHROPIC_API_KEY:
-    raise EnvironmentError("API keys are not set in the environment variables.")
 
 # Set up Maxim logger configuration
 logger_config = LoggerConfig(id=LOG_REPOSITORY_ID)
 logger = Logger(config=logger_config, api_key=MAXIM_API_KEY, base_url="https://app.getmaxim.ai")
 
-# Set up a unique session for logging
+# Set up a unique session and trace for the application
 session_id = str(uuid4())
 session_config = SessionConfig(id=session_id)
 session = logger.session(session_config)
 
-# Initialize the LangChain client for Claude (ChatAnthropic)
-MODEL_NAME = "claude-3-sonnet-20240229"  # Example of a Claude model version
+trace_id = str(uuid4())
+trace_config = TraceConfig(id=trace_id)
+trace = session.trace(trace_config)
+
+# Initialize the LangChain client for Claude
+MODEL_NAME = "claude-3-sonnet-20240229"
 llm = ChatAnthropic(model=MODEL_NAME, api_key=ANTHROPIC_API_KEY)
 
-# Prepare the question to send to the model
-question = "When did Mauritius gain independence?"
+# Prepare the question and messages
+user_input = "When did Mauritius gain independence?"
+system_message = "You are a helpful assistant."
 
-# Prepare the messages for the model
-messages = [
-    ("system", "You are a helpful assistant."),
-    ("human", question)
-]
+# Set up generation configuration
+generation_id = str(uuid4())
+generation_config = GenerationConfig(
+    id=generation_id,
+    name="generation",
+    provider="anthropic",
+    model=MODEL_NAME,
+    messages=[
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": user_input}
+    ]
+)
+generation = trace.generation(generation_config)
 
-# Function to get the response from Claude and log it to Maxim
-def get_Claude_response(messages):
-    # Create a unique trace ID and start the trace
-    trace_id = str(uuid4())
-    trace_config = TraceConfig(id=trace_id)
-    trace = session.trace(trace_config)
-    
-    # Make the API call to Claude using LangChain's `ChatAnthropic`
+try:
+    # Make the API call to Claude using LangChain
+    messages = [
+        ("system", system_message),
+        ("human", user_input)
+    ]
     response = llm.invoke(messages)
-    
-    # Extract the response text from the 'content' field
-    response_text = response.content  # Use the 'content' field directly
-    
-    # Log the response to Maxim
-    trace.event(str(uuid4()), "Claude's Response", {"response_text": response_text})
-    trace.end()  # End the trace after logging the response
-    
-    return response_text
+    response_text = response.content
 
-# Get the completion from Claude and log the response
-completion = get_Claude_response(messages)
+    # Log the response with Maxim
+    generation.result({
+        "id": generation_id,
+        "object": "text_completion",
+        "created": int(time()),
+        "model": generation_config.model,
+        "choices": [
+            {
+                "index": 0,
+                "text": response_text,
+                "logprobs": None,
+                "finish_reason": "stop",
+            },
+        ],
+        "usage": {
+            "prompt_tokens": 0,  # LangChain might not provide token counts
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        },
+    })
+    
+    # Print the response
+    print(response_text)
 
-# Print the response
-print(completion)
+except Exception as e:
+    error_message = f"Error occurred: {str(e)}"
+    print(error_message)
+    generation.error(GenerationError(error_message))
+
+finally:
+    # End the generation and clean up
+    generation.end()
+    trace.end()
+    logger.cleanup()

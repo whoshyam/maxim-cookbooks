@@ -1,8 +1,10 @@
 import os
-import openai  # Import OpenAI library
+import openai
+from time import time
 from maxim.maxim import Logger, LoggerConfig
 from maxim.logger.components.session import SessionConfig
 from maxim.logger.components.trace import TraceConfig
+from maxim.logger.components.generation import GenerationConfig
 from uuid import uuid4
 
 # Retrieve API keys from environment variables
@@ -29,25 +31,55 @@ trace = session.trace(trace_config)
 # Set up the OpenAI client
 openai.api_key = OPENAI_API_KEY
 
-# Call OpenAI API and log the response
+# Initialize generation configuration
+generation_id = str(uuid4())
+messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Write a haiku about recursion in programming."},
+]
+
+generation_config = GenerationConfig(
+    id=generation_id,
+    name="generation",
+    provider="openai",
+    model=MODEL_NAME,
+    messages=messages
+)
+generation = trace.generation(generation_config)
+
 try:
     # Create a chat completion request
     response = openai.chat.completions.create(
         model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Write a haiku about recursion in programming."},
-        ],
+        messages=messages,
     )
-    # Correctly extract the plain text from the response
+    
+    # Extract response text and usage
     response_text = response.choices[0].message.content
+    usage = response.usage
 
-    # Log the response with Maxim
-    trace.event(str(uuid4()), "OpenAI's Response", {"response_text": response_text})
+    # Log the generation result with tokens
+    generation.result({
+        "id": generation_id,
+        "object": "chat.completion",
+        "created": int(time()),
+        "model": MODEL_NAME,
+        "choices": [
+            {
+                "index": 0,
+                "text": response_text,
+                "logprobs": None,
+                "finish_reason": response.choices[0].finish_reason,
+            },
+        ],
+        "usage": {
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens,
+        },
+    })
 
-    # Print the response
-    print("OpenAI's Response:")
-    print(response_text)
+    generation.end()
 
 finally:
     # Clean up the logger session

@@ -1,8 +1,10 @@
 import os
-import openai  # Import OpenAI library
+import openai
+from time import time
 from maxim.maxim import Logger, LoggerConfig
 from maxim.logger.components.session import SessionConfig
 from maxim.logger.components.trace import TraceConfig
+from maxim.logger.components.generation import GenerationConfig
 from uuid import uuid4
 
 # Retrieve API keys from environment variables
@@ -29,27 +31,63 @@ trace = session.trace(trace_config)
 # Set up the OpenAI client
 openai.api_key = OPENAI_API_KEY
 
-# Set up the OpenAI client
-openai.api_key = OPENAI_API_KEY
+# Initialize generation configuration
+generation_id = str(uuid4())
+messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Write a haiku about recursion in programming."},
+]
 
-# Start streaming the response from OpenAI and log each chunk
+generation_config = GenerationConfig(
+    id=generation_id,
+    name="generation",
+    provider="openai",
+    model=MODEL_NAME,
+    messages=messages
+)
+generation = trace.generation(generation_config)
+
 try:
-    stream = openai.chat.completions.create(
+    # Create a chat completion request
+    response = openai.chat.completions.create(
         model=MODEL_NAME,
-        messages=[{"role": "system", "content": "You are a helpful assistant."},
-                  {"role": "user", "content": "Write a haiku about recursion in programming."}],
-        stream=True,
+        messages=messages,
     )
+    
+    # Extract response text and usage
+    response_text = response.choices[0].message.content
+    usage = response.usage
 
-    print("OpenAI Streaming Response:")
+    # Log the generation result with tokens
+    generation.result({
+        "id": generation_id,
+        "object": "chat.completion",
+        "created": int(time()),
+        "model": MODEL_NAME,
+        "choices": [
+            {
+                "index": 0,
+                "text": response_text,
+                "logprobs": None,
+                "finish_reason": response.choices[0].finish_reason,
+            },
+        ],
+        "usage": {
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens,
+        },
+    })
 
-    for chunk in stream:
-        if chunk.choices[0].delta.content is not None:
-            chunk_text = chunk.choices[0].delta.content
-            print(chunk_text, end="", flush=True)
+    # Print the response
+    print("OpenAI's Response:")
+    print(response_text)
+    print("\nToken Usage:")
+    print(f"Prompt tokens: {usage.prompt_tokens}")
+    print(f"Completion tokens: {usage.completion_tokens}")
+    print(f"Total tokens: {usage.total_tokens}")
 
-            # Log each chunk with Maxim using a unique event ID
-            trace.event(str(uuid4()), "OpenAI Stream Chunk", {"chunk": chunk_text})
+    generation.end()
 
 finally:
     # Clean up the logger session
