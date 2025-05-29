@@ -20,11 +20,11 @@ def create_trace():
     span = trace.span({"id": str(uuid.uuid4()), "name": "test span"})
 
     span.event(str(uuid.uuid4()), "test span event")
-
+    
     span.end()
 
     trace.end()
-
+     
 
 if __name__ == "__main__":
     create_trace()
