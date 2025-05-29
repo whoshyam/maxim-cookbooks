@@ -73,8 +73,7 @@ func main(){
 			"completion_tokens": 10,
 			"total_tokens": 20,
 		},
-	})
-	generation.SetError(nil)
+	})	
 	span.End()
 	trace.End()
 }
