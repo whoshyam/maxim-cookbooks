@@ -1,0 +1,22 @@
+{
+  "name": "manual-tracing-typescript",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@maximai/maxim-js": "6.3.0",
+    "openai": "5.0.2",
+    "dotenv": "16.5.0",
+    "mime-types": "3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.29",
+    "@types/mime-types": "3.0.0",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3"
+  }
+}
