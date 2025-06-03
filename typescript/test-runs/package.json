@@ -1,19 +1,19 @@
 {
-    "name": "test-runs",
-    "version": "1.0.0",
-    "main": "index.js",
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "description": "",
-    "dependencies": {
-        "@maximai/maxim-js": "^6.1.3",
-        "dotenv": "^16.4.7"
-    },
-    "devDependencies": {
-        "@types/node": "^22.13.1"
-    }
+  "name": "test-runs",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@maximai/maxim-js": "6.3.0",
+    "dotenv": "16.5.0",
+    "openai": "5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.29",
+    "tsx": "4.19.4"
+  }
 }

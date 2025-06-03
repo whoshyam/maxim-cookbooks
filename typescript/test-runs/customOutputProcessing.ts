@@ -1,114 +1,78 @@
 import { createDataStructure, Maxim } from "@maximai/maxim-js";
 import "dotenv/config";
+import { generateResponse } from "./utils/openai-helper.js";
 
-let apiKey: string, workspaceId: string, datasetId: string;
-if (!process.env.MAXIM_API_KEY)
-    throw new Error("Missing MAXIM_API_KEY environment variable");
-if (!process.env.MAXIM_WORKSPACE_ID)
-    throw new Error("Missing MAXIM_WORKSPACE_ID environment variable");
-if (!process.env.MAXIM_DATASET_ID)
-    throw new Error("Missing MAXIM_DATASET_ID environment variable");
-apiKey = process.env.MAXIM_API_KEY;
-workspaceId = process.env.MAXIM_WORKSPACE_ID;
-datasetId = process.env.MAXIM_DATASET_ID;
+// Validate required environment variables
+const requiredEnvVars = {
+  MAXIM_API_KEY: process.env.MAXIM_API_KEY,
+  MAXIM_WORKSPACE_ID: process.env.MAXIM_WORKSPACE_ID,
+  MAXIM_DATASET_ID: process.env.MAXIM_DATASET_ID,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+};
 
-const maxim = new Maxim({ apiKey });
+for (const [key, value] of Object.entries(requiredEnvVars)) {
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+}
 
+const MAXIM_API_KEY = requiredEnvVars.MAXIM_API_KEY!;
+const MAXIM_WORKSPACE_ID = requiredEnvVars.MAXIM_WORKSPACE_ID!;
+const MAXIM_DATASET_ID = requiredEnvVars.MAXIM_DATASET_ID!;
+
+// Initialize Maxim SDK
+const maxim = new Maxim({ apiKey: MAXIM_API_KEY });
+
+// Define data structure for the test
 const dataStructure = createDataStructure({
-    Input: "INPUT",
-    "Expected Output": "EXPECTED_OUTPUT",
-    Context: "VARIABLE",
+  Input: "INPUT",
+  "Expected Output": "EXPECTED_OUTPUT",
+  Context: "CONTEXT_TO_EVALUATE",
 });
 
+// Run test with custom output processing using OpenAI
 const result = await maxim
-    .createTestRun(`sdk test run on ${Date.now()}`, workspaceId)
-    .withDataStructure(dataStructure)
-    .withData(datasetId)
-    .yieldsOutput(async (data) => {
-        const startTime = Date.now();
-        const response = await mockLLMCall(data.Input, data.Context);
+  .createTestRun(`Custom Output Processing - ${new Date().toISOString()}`, MAXIM_WORKSPACE_ID)
+  .withDataStructure(dataStructure)
+  .withData(MAXIM_DATASET_ID)
+  .yieldsOutput(async data => {
+    const startTime = Date.now();
 
-        // throw new Error("This is a mock error"); // throwing from this function will cause the entry to be marked as failed and you will recieve the index of the failed entry in the `failedEntryIndices` array
+    try {
+      // Handle context - convert array to string if needed
+      const contextString = Array.isArray(data.Context) ? data.Context.join("\n") : data.Context;
 
-        return {
-            data: response[0].choices[0].message.content,
-            retrievedContextToEvaluate: response[1], // Optional, if you are retrieving context for the LLM call and not using from dataset, you can pass it here
-            meta: {
-                // `meta` is optional; used for tracking metadata relating to the LLM call
-                usage: {
-                    completionTokens: response[0].usage.completion_tokens,
-                    promptTokens: response[0].usage.prompt_tokens,
-                    totalTokens: response[0].usage.total_tokens,
-                    latency: Date.now() - startTime,
-                },
-                cost: {
-                    input: response[0].usage.prompt_tokens * 0.03, // Assuming cost of 0.03 tokens per token
-                    output: response[0].usage.completion_tokens * 0.03,
-                    total:
-                        (response[0].usage.prompt_tokens +
-                            response[0].usage.completion_tokens) *
-                        0.03,
-                },
-            },
-        };
-    })
-    .withEvaluators("Faithfulness", "Semantic Similarity")
-    .run();
+      // Generate response using OpenAI with context
+      const aiResponse = await generateResponse(
+        data.Input,
+        contextString,
+        "You are a helpful assistant that provides accurate and informative responses."
+      );
 
-console.log("\n\n========Test run results========");
-console.log("\nFailed values: ", result.failedEntryIndices);
-console.log("\nTest run link: ", result.testRunResult.link);
-console.log("\nFinal result: ", result.testRunResult.result[0]);
+      return {
+        data: aiResponse.response,
+        retrievedContextToEvaluate: data.Context,
+        meta: {
+          usage: aiResponse.usage,
+          cost: aiResponse.cost,
+          modelUsed: "gpt-3.5-turbo",
+          processingTime: Date.now() - startTime,
+        },
+      };
+    } catch (error) {
+      // If OpenAI call fails, this entry will be marked as failed
+      throw new Error(`Failed to process entry: ${error}`);
+    }
+  })
+  .withEvaluators("Faithfulness", "Semantic Similarity")
+  .withConcurrency(2) // Process 2 entries in parallel to avoid rate limits
+  .run();
+
+// Display results
+console.log("\n⚙️ Custom Output Processing Results");
+console.log("=====================================");
+console.log(`❌ Failed entries: ${result.failedEntryIndices.length > 0 ? result.failedEntryIndices.join(", ") : "None"}`);
+console.log(`🔗 View results: ${result.testRunResult.link}`);
+console.log(`📊 Summary: ${JSON.stringify(result.testRunResult.result[0], null, 2)}`);
 
 await maxim.cleanup();
-
-async function mockLLMCall(input: string, context?: string | string[]) {
-    const model = "gpt-3.5-turbo";
-    const temperature = 0.7;
-    const maxTokens = 500;
-
-    const stringContext = context
-        ? Array.isArray(context)
-            ? context.join("\n")
-            : context
-        : undefined;
-
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Calculate mock token counts
-    const promptTokens = Math.ceil(
-        (input.length + (stringContext?.length ?? 0)) / 4,
-    );
-    const completionTokens = Math.ceil(maxTokens * 0.7); // Simulate using 70% of max tokens
-
-    // Generate a mock response based on input
-    const mockResponse = `This is a mock response to: "${input}". ${
-        stringContext ? `Taking into account the context: "${stringContext}".` : ""
-    }`;
-
-    return [
-        {
-            id: `chatcmpl-${Math.random().toString(36).substr(2, 9)}`,
-            object: "chat.completion",
-            created: Date.now(),
-            model,
-            choices: [
-                {
-                    index: 0,
-                    message: {
-                        role: "assistant",
-                        content: mockResponse,
-                    },
-                    finish_reason: "stop",
-                },
-            ],
-            usage: {
-                prompt_tokens: promptTokens,
-                completion_tokens: completionTokens,
-                total_tokens: promptTokens + completionTokens,
-            },
-        },
-        stringContext,
-    ] as const;
-}
