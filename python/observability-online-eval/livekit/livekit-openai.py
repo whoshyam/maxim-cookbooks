@@ -12,7 +12,7 @@ from maxim.logger.livekit import instrument_livekit
 
 dotenv.load_dotenv(override=True)
 
-logger = Maxim({"base_url":"https://app.beta.getmaxim.ai"}).logger()
+logger = Maxim().logger()
 
 def on_event(event:str, data:dict):
     print(f"##################Event: {event}, Data: {data}")        
