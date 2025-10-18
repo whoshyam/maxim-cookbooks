@@ -1,4 +1,4 @@
-# Maxim Cookbooks
+## Maxim Cookbooks
 
 Maxim Cookbooks is a collection of example projects demonstrating how to integrate [**Maxim**](https://www.getmaxim.ai/) for AI agent **observability**, **auto-evaluation**, **prompt management**, **simulation**, and **test run workflows** across a variety of popular frameworks and SDKs.
 
